@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Code Analyzer</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .tool-selector {
+            margin-bottom: 20px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+            white-space: pre-wrap;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        #imageResult {
+            max-width: 100%;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Web Code Analyzer</h1>
+        
+        <div class="tool-selector">
+            <label for="toolType">Select Tool:</label>
+            <select id="toolType" onchange="updateInterface()">
+                <option value="website">Website Analysis</option>
+                <option value="music">Music Search</option>
+                <option value="image">Image Generation</option>
+            </select>
+        </div>
+
+        <div id="websiteInputs" class="input-group">
+            <label for="url">Website URL:</label>
+            <input type="text" id="url" placeholder="https://example.com">
+        </div>
+
+        <div class="input-group">
+            <label for="prompt">Prompt/Query:</label>
+            <textarea id="prompt" rows="3" placeholder="Enter your prompt or query here..."></textarea>
+        </div>
+
+        <button onclick="submitRequest()">Submit</button>
+
+        <div id="result"></div>
+        <img id="imageResult" style="display: none;">
+    </div>
+
+    <script>
+        function updateInterface() {
+            const toolType = document.getElementById('toolType').value;
+            const websiteInputs = document.getElementById('websiteInputs');
+            const promptLabel = document.querySelector('label[for="prompt"]');
+            const prompt = document.getElementById('prompt');
+
+            // Show/hide URL input based on tool type
+            websiteInputs.style.display = toolType === 'website' ? 'block' : 'none';
+
+            // Update prompt placeholder based on tool type
+            switch(toolType) {
+                case 'website':
+                    promptLabel.textContent = 'Analysis Prompt:';
+                    prompt.placeholder = 'Enter what you want to know about the website...';
+                    break;
+                case 'music':
+                    promptLabel.textContent = 'Music Search:';
+                    prompt.placeholder = 'Enter song or artist name...';
+                    break;
+                case 'image':
+                    promptLabel.textContent = 'Image Description:';
+                    prompt.placeholder = 'Describe the image you want to generate...';
+                    break;
+            }
+        }
+
+        async function submitRequest() {
+            const toolType = document.getElementById('toolType').value;
+            const url = document.getElementById('url').value;
+            const prompt = document.getElementById('prompt').value;
+            const resultDiv = document.getElementById('result');
+            const imageResult = document.getElementById('imageResult');
+
+            // Validate inputs
+            if (toolType === 'website' && !url) {
+                resultDiv.textContent = 'Error: Please enter a website URL';
+                resultDiv.className = 'error';
+                return;
+            }
+
+            if (!prompt) {
+                resultDiv.textContent = 'Error: Please enter a prompt or query';
+                resultDiv.className = 'error';
+                return;
+            }
+
+            // Reset display
+            resultDiv.textContent = 'Processing...';
+            resultDiv.className = '';
+            imageResult.style.display = 'none';
+
+            try {
+                let endpoint = '';
+                let requestBody = {};
+
+                switch(toolType) {
+                    case 'website':
+                        endpoint = '/api/analyze-website';
+                        requestBody = {
+                            url: url,
+                            prompt: prompt
+                        };
+                        break;
+                    case 'music':
+                        endpoint = '/api/search-music';
+                        requestBody = {
+                            query: prompt
+                        };
+                        break;
+                    case 'image':
+                        endpoint = '/api/generate-image';
+                        requestBody = {
+                            prompt: prompt
+                        };
+                        break;
+                }
+
+                const response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    const errorMsg = data.detail || 'An error occurred';
+                    console.error('API Error:', errorMsg);
+                    throw new Error(errorMsg);
+                }
+
+                // Handle different response types
+                if (data.task === 'image_generation') {
+                    imageResult.src = data.image_url;
+                    imageResult.style.display = 'block';
+                    resultDiv.textContent = 'Image generated successfully!';
+                } else if (data.task === 'website_analysis') {
+                    if (data.analysis_result && data.analysis_result.startsWith('Error:')) {
+                        throw new Error(data.analysis_result);
+                    }
+                    resultDiv.innerHTML = `
+                        <h3>Analysis Results:</h3>
+                        <div style="white-space: pre-wrap;">${data.analysis_result}</div>
+                    `;
+                } else if (data.task === 'music_search') {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    const musicResults = data.results.map(result => `
+                        <div class="music-result">
+                            <div class="music-thumbnail">
+                                <img src="${result.thumbnail}" alt="${result.title}">
+                            </div>
+                            <div class="music-info">
+                                <h3>${result.title}</h3>
+                                <p>Channel: ${result.channel}</p>
+                                <p>${result.description}</p>
+                                <div class="music-actions">
+                                    <a href="${result.video_url}" target="_blank" class="button">Watch on YouTube</a>
+                                    <button onclick="playVideo('${result.embed_url}')" class="button">Play Here</button>
+                                </div>
+                            </div>
+                            <div id="player-${result.video_url}" class="video-player"></div>
+                        </div>
+                    `).join('');
+
+                    resultDiv.innerHTML = `
+                        <h2>Music Search Results for "${data.query}"</h2>
+                        <div class="music-results">
+                            ${musicResults}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+                resultDiv.className = 'error';
+            }
+        }
+
+        function playVideo(embedUrl) {
+            const videoId = embedUrl.split('/').pop();
+            const playerContainer = document.getElementById(`player-${videoId}`);
+            
+            if (playerContainer.classList.contains('active')) {
+                playerContainer.innerHTML = '';
+                playerContainer.classList.remove('active');
+            } else {
+                const iframe = document.createElement('iframe');
+                iframe.width = '560';
+                iframe.height = '315';
+                iframe.src = embedUrl;
+                iframe.frameBorder = '0';
+                iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+                iframe.allowFullscreen = true;
+                
+                playerContainer.innerHTML = '';
+                playerContainer.appendChild(iframe);
+                playerContainer.classList.add('active');
+            }
+        }
+
+        // Initialize interface
+        updateInterface();
+    </script>
+</body>
+</html>
